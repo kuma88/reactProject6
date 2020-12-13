@@ -1,7 +1,17 @@
 import React, { useEffect, useState } from "react";
-import {StyleSheet,Text,View,TouchableOpacity,FlatList,} from "react-native";
+import {
+  StyleSheet,
+  Text,
+  View,
+  TouchableOpacity,
+  FlatList,
+} from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as SQLite from "expo-sqlite";
+import * as FileSystem from "expo-file-system";
+
+const db = SQLite.openDatabase("notes.db");
+console.log(FileSystem.documentDirectory);
 
 // const SAMPLE_NOTES = [
 //   { title: "Feed the elephant", done: false, id: "0" },
@@ -9,22 +19,34 @@ import * as SQLite from "expo-sqlite";
 //   { title: "Shower the elephant", done: false, id: "2" },
 // ];
 
-const db = SQLite.openDatabase("notes.db");
-
 export default function NotesScreen({ navigation, route }) {
   const [notes, setNotes] = useState([]);
 
+  function refreshNotes() {
+    db.transaction((tx) => {
+      tx.executeSql(
+        "SELECT * FROM notes",
+        null,
+        (txObj, { rows: { _array } }) => setNotes(_array),
+        (txObj, error) => console.log(`Error: ${error}`)
+      );
+    });
+  }
   //This is to set up database , first run
   useEffect(() => {
-    db.transaction( (tx) => {
-      tx.executeSql(
-        `CREATE TABLE IF NOT EXISTS notes
+    db.transaction(
+      (tx) => {
+        tx.executeSql(
+          `CREATE TABLE IF NOT EXISTS notes
         (id INTEGER PRIMARY KEY AUTOINCREMENT,
           title TEXT,
           done INT)
         `
-      );
-    });
+        );
+      },
+      null,
+      refreshNotes
+    );
   }, []);
 
   // This is to set up the top right button
@@ -46,15 +68,24 @@ export default function NotesScreen({ navigation, route }) {
     });
   });
 
-  // Monitor route.params for changes
+  // Monitor route.params for changes + add to database
   useEffect(() => {
     if (route.params?.text) {
-      const newNote = {
-        title: route.params.text,
-        done: false,
-        id: notes.length.toString(),
-      };
-      setNotes([...notes, newNote]);
+      // const newNote = {
+      //   title: route.params.text,
+      //   done: false,
+      //   id: notes.length.toString(),
+      // };
+      // setNotes([...notes, newNote]);
+      db.transaction(
+        (tx) => {
+          tx.executeSql("INSERT INTO notes (done, title) VALUES (0, ?)", [
+            route.params.text,
+          ]);
+        },
+        null,
+        refreshNotes
+      );
     }
   }, [route.params?.text]);
 
@@ -90,6 +121,7 @@ export default function NotesScreen({ navigation, route }) {
         style={{ width: "100%" }}
         data={notes}
         renderItem={renderItem}
+        keyExtractor={(item) => item.id.toString()}
       />
     </View>
   );
